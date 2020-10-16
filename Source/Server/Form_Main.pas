@@ -93,10 +93,8 @@ type
     Splitter1: TSplitter;
     Logs_Memo: TMemo;
     Connections_ListView: TListView;
-    ApplicationEvents1: TApplicationEvents;
     Ping_Timer: TTimer;
     Main_ServerSocket: TServerSocket;
-    procedure ApplicationEvents1Exception(Sender: TObject; E: Exception);
     procedure FormCreate(Sender: TObject);
     procedure Ping_TimerTimer(Sender: TObject);
     procedure Main_ServerSocketClientConnect(Sender: TObject; Socket: TCustomWinSocket);
@@ -301,11 +299,6 @@ begin
   end;
 end;
 
-procedure Tfrm_Main.ApplicationEvents1Exception(Sender: TObject; E: Exception);
-begin
-  RegisterErrorLog('Application Error', E.ClassName, E.Message);
-end;
-
 procedure Tfrm_Main.FormCreate(Sender: TObject);
 begin
   Main_ServerSocket.Port   := Port;
@@ -340,72 +333,70 @@ var
   ThreadFiles   : TThreadConnection_Files;
 begin
   inherited;
+  while True do
+  begin
 
-  try
-    while AThread_Define.Connected do
+    Sleep(ProcessingSlack);
+
+    if (AThread_Define = nil) or not (AThread_Define.Connected) then
+      Break;
+
+    if AThread_Define.ReceiveLength < 1 then
+      Continue;
+
+    Buffer := AThread_Define.ReceiveText;
+
+    position := Pos('<|MAINSOCKET|>', Buffer); // Storing the position in an integer variable will prevent it from having to perform two searches, gaining more performance
+    if position > 0 then
     begin
+      // Create the Thread for Main Socket
+      ThreadMain := TThreadConnection_Main.Create(AThread_Define);
 
-      Sleep(ProcessingSlack);
-
-      if AThread_Define.ReceiveLength < 1 then
-        Continue;
-
-      Buffer := AThread_Define.ReceiveText;
-
-      position := Pos('<|MAINSOCKET|>', Buffer); // Storing the position in an integer variable will prevent it from having to perform two searches, gaining more performance
-      if position > 0 then
-      begin
-        // Create the Thread for Main Socket
-        ThreadMain := TThreadConnection_Main.Create(AThread_Define);
-
-        break; // Break the while
-      end;
-
-      position := Pos('<|DESKTOPSOCKET|>', Buffer); // For example, I stored the position of the string I wanted to find
-      if position > 0 then
-      begin
-        BufferTemp := Buffer;
-
-        Delete(BufferTemp, 1, position + 16); // So since I already know your position, I do not need to pick it up again
-        ID := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
-
-        // Create the Thread for Desktop Socket
-        ThreadDesktop := TThreadConnection_Desktop.Create(AThread_Define, ID);
-
-        break; // Break the while
-      end;
-
-      position := Pos('<|KEYBOARDSOCKET|>', Buffer);
-      if position > 0 then
-      begin
-        BufferTemp := Buffer;
-
-        Delete(BufferTemp, 1, position + 17);
-        ID := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
-
-        // Create the Thread for Keyboard Socket
-        ThreadKeyboard := TThreadConnection_Keyboard.Create(AThread_Define, ID);
-
-        break; // Break the while
-      end;
-
-      position := Pos('<|FILESSOCKET|>', Buffer);
-      if position > 0 then
-      begin
-        BufferTemp := Buffer;
-
-        Delete(BufferTemp, 1, Pos('<|FILESSOCKET|>', Buffer) + 14);
-        ID := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
-
-        // Create the Thread for Files Socket
-        ThreadFiles := TThreadConnection_Files.Create(AThread_Define, ID);
-
-        break; // Break the while
-      end;
-
+      break; // Break the while
     end;
 
-  except
+    position := Pos('<|DESKTOPSOCKET|>', Buffer); // For example, I stored the position of the string I wanted to find
+    if position > 0 then
+    begin
+      BufferTemp := Buffer;
+
+      Delete(BufferTemp, 1, position + 16); // So since I already know your position, I do not need to pick it up again
+      ID := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
+
+      // Create the Thread for Desktop Socket
+      ThreadDesktop := TThreadConnection_Desktop.Create(AThread_Define, ID);
+
+      break; // Break the while
+    end;
+
+    position := Pos('<|KEYBOARDSOCKET|>', Buffer);
+    if position > 0 then
+    begin
+      BufferTemp := Buffer;
+
+      Delete(BufferTemp, 1, position + 17);
+      ID := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
+
+      // Create the Thread for Keyboard Socket
+      ThreadKeyboard := TThreadConnection_Keyboard.Create(AThread_Define, ID);
+
+      break; // Break the while
+    end;
+
+    position := Pos('<|FILESSOCKET|>', Buffer);
+    if position > 0 then
+    begin
+      BufferTemp := Buffer;
+
+      Delete(BufferTemp, 1, Pos('<|FILESSOCKET|>', Buffer) + 14);
+      ID := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
+
+      // Create the Thread for Files Socket
+      ThreadFiles := TThreadConnection_Files.Create(AThread_Define, ID);
+
+      break; // Break the while
+    end;
+
   end;
 
 end;
@@ -448,220 +439,206 @@ begin
   while AThread_Main.SendText('<|ID|>' + ID + '<|>' + Password + '<|END|>') < 0 do
     Sleep(ProcessingSlack);
 
-  try
-    while true do
+  while true do
+  begin
+
+    Sleep(ProcessingSlack);
+
+    if (AThread_Main = nil) or not (AThread_Main.Connected) then
+      break;
+
+    if AThread_Main.ReceiveLength < 1 then
+      Continue;
+
+    Buffer := AThread_Main.ReceiveText;
+
+    position := Pos('<|FINDID|>', Buffer);
+    if position > 0 then
     begin
+      BufferTemp := Buffer;
+      Delete(BufferTemp, 1, position + 9);
 
-      Sleep(ProcessingSlack);
+      TargetID := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
 
-      if not AThread_Main.Connected then
-        break;
-
-      if AThread_Main.ReceiveLength < 1 then
-        Continue;
-
-      Buffer := AThread_Main.ReceiveText;
-
-      position := Pos('<|FINDID|>', Buffer);
-      if position > 0 then
+      if (CheckIDExists(TargetID)) then
       begin
-        BufferTemp := Buffer;
-        Delete(BufferTemp, 1, position + 9);
 
-        TargetID := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
-
-        if (CheckIDExists(TargetID)) then
+        if (FindListItemID(TargetID).SubItems[3] = '') then
         begin
 
-          if (FindListItemID(TargetID).SubItems[3] = '') then
-          begin
+          while AThread_Main.SendText('<|IDEXISTS!REQUESTPASSWORD|>') < 0 do
+            Sleep(ProcessingSlack);
 
-            while AThread_Main.SendText('<|IDEXISTS!REQUESTPASSWORD|>') < 0 do
-              Sleep(ProcessingSlack);
-
-          end
-          else
-          begin
-
-            while AThread_Main.SendText('<|ACCESSBUSY|>') < 0 do
-              Sleep(ProcessingSlack);
-
-          end
         end
         else
         begin
 
-          while AThread_Main.SendText('<|IDNOTEXISTS|>') < 0 do
+          while AThread_Main.SendText('<|ACCESSBUSY|>') < 0 do
             Sleep(ProcessingSlack);
 
-        end;
-      end;
-
-      if Buffer.Contains('<|PONG|>') then
-      begin
-        EndPing := GetTickCount - StartPing;
-        Synchronize(InsertPing);
-      end;
-
-      position := Pos('<|CHECKIDPASSWORD|>', Buffer);
-      if position > 0 then
-      begin
-        BufferTemp := Buffer;
-        Delete(BufferTemp, 1, position + 18);
-
-        position := Pos('<|>', BufferTemp);
-        TargetID := Copy(BufferTemp, 1, position - 1);
-
-        Delete(BufferTemp, 1, position + 2);
-
-        TargetPassword := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
-
-        if (CheckIDPassword(TargetID, TargetPassword)) then
-        begin
-
-          while AThread_Main.SendText('<|ACCESSGRANTED|>') < 0 do
-            Sleep(ProcessingSlack);
         end
-        else
-        begin
-
-          while AThread_Main.SendText('<|ACCESSDENIED|>') < 0 do
-            Sleep(ProcessingSlack);
-
-        end;
-      end;
-
-      position := Pos('<|RELATION|>', Buffer);
-      if position > 0 then
+      end
+      else
       begin
-        BufferTemp := Buffer;
-        Delete(BufferTemp, 1, position + 11);
 
-        position := Pos('<|>', BufferTemp);
-        ID       := Copy(BufferTemp, 1, position - 1);
-
-        Delete(BufferTemp, 1, position + 2);
-
-        TargetID := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
-
-        L  := FindListItemID(ID);
-        L2 := FindListItemID(TargetID);
-
-        Synchronize(InsertTargetID);
-
-        // Relates the main Sockets
-        TThreadConnection_Main(L.SubItems.Objects[0]).AThread_Main_Target  := TThreadConnection_Main(L2.SubItems.Objects[0]).AThread_Main;
-        TThreadConnection_Main(L2.SubItems.Objects[0]).AThread_Main_Target := TThreadConnection_Main(L.SubItems.Objects[0]).AThread_Main;
-
-        // Relates the Remote Desktop
-        TThreadConnection_Desktop(L.SubItems.Objects[1]).AThread_Desktop_Target  := TThreadConnection_Desktop(L2.SubItems.Objects[1]).AThread_Desktop;
-        TThreadConnection_Desktop(L2.SubItems.Objects[1]).AThread_Desktop_Target := TThreadConnection_Desktop(L.SubItems.Objects[1]).AThread_Desktop;
-
-        // Relates the Keyboard Socket
-        TThreadConnection_Keyboard(L.SubItems.Objects[2]).AThread_Keyboard_Target := TThreadConnection_Keyboard(L2.SubItems.Objects[2]).AThread_Keyboard;
-
-        // Relates the Share Files
-        TThreadConnection_Files(L.SubItems.Objects[3]).AThread_Files_Target  := TThreadConnection_Files(L2.SubItems.Objects[3]).AThread_Files;
-        TThreadConnection_Files(L2.SubItems.Objects[3]).AThread_Files_Target := TThreadConnection_Files(L.SubItems.Objects[3]).AThread_Files;
-
-        // Warns Access
-        TThreadConnection_Main(L.SubItems.Objects[0]).AThread_Main_Target.SendText('<|ACCESSING|>');
-
-        // Get first screenshot
-        TThreadConnection_Desktop(L.SubItems.Objects[1]).AThread_Desktop_Target.SendText('<|GETFULLSCREENSHOT|>');
+        while AThread_Main.SendText('<|IDNOTEXISTS|>') < 0 do
+          Sleep(ProcessingSlack);
 
       end;
+    end;
 
-      // Stop relations
-      if Buffer.Contains('<|STOPACCESS|>') then
+    if Buffer.Contains('<|PONG|>') then
+    begin
+      EndPing := GetTickCount - StartPing;
+      Synchronize(InsertPing);
+    end;
+
+    position := Pos('<|CHECKIDPASSWORD|>', Buffer);
+    if position > 0 then
+    begin
+      BufferTemp := Buffer;
+      Delete(BufferTemp, 1, position + 18);
+
+      position := Pos('<|>', BufferTemp);
+      TargetID := Copy(BufferTemp, 1, position - 1);
+
+      Delete(BufferTemp, 1, position + 2);
+
+      TargetPassword := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
+
+      if (CheckIDPassword(TargetID, TargetPassword)) then
       begin
-        AThread_Main.SendText('<|DISCONNECTED|>');
-        AThread_Main_Target.SendText('<|DISCONNECTED|>');
 
-        AThread_Main_Target                                                := nil;
-        TThreadConnection_Main(L2.SubItems.Objects[0]).AThread_Main_Target := nil;
-
-        Synchronize(
-          procedure
-          begin
-            L.SubItems[3] := '';
-            L2.SubItems[3] := '';
-          end);
-      end;
-
-      // Redirect commands
-      position := Pos('<|REDIRECT|>', Buffer);
-      if position > 0 then
+        while AThread_Main.SendText('<|ACCESSGRANTED|>') < 0 do
+          Sleep(ProcessingSlack);
+      end
+      else
       begin
-        BufferTemp := Buffer;
-        Delete(BufferTemp, 1, position + 11);
 
-        if (Pos('<|FOLDERLIST|>', BufferTemp) > 0) then
-        begin
-          while (AThread_Main.Connected) do
-          begin
-
-            Sleep(ProcessingSlack); // Avoids using 100% CPU
-
-            if (Pos('<|ENDFOLDERLIST|>', BufferTemp) > 0) then
-              break;
-
-            BufferTemp := BufferTemp + AThread_Main.ReceiveText;
-
-          end;
-        end;
-
-        if (Pos('<|FILESLIST|>', BufferTemp) > 0) then
-        begin
-
-          while (AThread_Main.Connected) do
-          begin
-
-            Sleep(ProcessingSlack); // Avoids using 100% CPU
-
-            if (Pos('<|ENDFILESLIST|>', BufferTemp) > 0) then
-              break;
-
-            BufferTemp := BufferTemp + AThread_Main.ReceiveText;
-
-          end;
-        end;
-
-        if (AThread_Main_Target <> nil) and (AThread_Main_Target.Connected) then
-          while AThread_Main_Target.SendText(BufferTemp) < 0 do
-            Sleep(ProcessingSlack);
+        while AThread_Main.SendText('<|ACCESSDENIED|>') < 0 do
+          Sleep(ProcessingSlack);
 
       end;
+    end;
+
+    position := Pos('<|RELATION|>', Buffer);
+    if position > 0 then
+    begin
+      BufferTemp := Buffer;
+      Delete(BufferTemp, 1, position + 11);
+
+      position := Pos('<|>', BufferTemp);
+      ID       := Copy(BufferTemp, 1, position - 1);
+
+      Delete(BufferTemp, 1, position + 2);
+
+      TargetID := Copy(BufferTemp, 1, Pos('<|END|>', BufferTemp) - 1);
+
+      L  := FindListItemID(ID);
+      L2 := FindListItemID(TargetID);
+
+      Synchronize(InsertTargetID);
+
+      // Relates the main Sockets
+      TThreadConnection_Main(L.SubItems.Objects[0]).AThread_Main_Target  := TThreadConnection_Main(L2.SubItems.Objects[0]).AThread_Main;
+      TThreadConnection_Main(L2.SubItems.Objects[0]).AThread_Main_Target := TThreadConnection_Main(L.SubItems.Objects[0]).AThread_Main;
+
+      // Relates the Remote Desktop
+      TThreadConnection_Desktop(L.SubItems.Objects[1]).AThread_Desktop_Target  := TThreadConnection_Desktop(L2.SubItems.Objects[1]).AThread_Desktop;
+      TThreadConnection_Desktop(L2.SubItems.Objects[1]).AThread_Desktop_Target := TThreadConnection_Desktop(L.SubItems.Objects[1]).AThread_Desktop;
+
+      // Relates the Keyboard Socket
+      TThreadConnection_Keyboard(L.SubItems.Objects[2]).AThread_Keyboard_Target := TThreadConnection_Keyboard(L2.SubItems.Objects[2]).AThread_Keyboard;
+
+      // Relates the Share Files
+      TThreadConnection_Files(L.SubItems.Objects[3]).AThread_Files_Target  := TThreadConnection_Files(L2.SubItems.Objects[3]).AThread_Files;
+      TThreadConnection_Files(L2.SubItems.Objects[3]).AThread_Files_Target := TThreadConnection_Files(L.SubItems.Objects[3]).AThread_Files;
+
+      // Warns Access
+      TThreadConnection_Main(L.SubItems.Objects[0]).AThread_Main_Target.SendText('<|ACCESSING|>');
+
+      // Get first screenshot
+      TThreadConnection_Desktop(L.SubItems.Objects[1]).AThread_Desktop_Target.SendText('<|GETFULLSCREENSHOT|>');
 
     end;
-  except
-    on E: Exception do
+
+    // Stop relations
+    if Buffer.Contains('<|STOPACCESS|>') then
     begin
+      AThread_Main.SendText('<|DISCONNECTED|>');
+      AThread_Main_Target.SendText('<|DISCONNECTED|>');
+
+      AThread_Main_Target                                                := nil;
+      TThreadConnection_Main(L2.SubItems.Objects[0]).AThread_Main_Target := nil;
 
       Synchronize(
         procedure
         begin
-          RegisterErrorLog('Main Thread Connection', E.ClassName, E.Message);
+          L.SubItems[3] := '';
+          L2.SubItems[3] := '';
         end);
+    end;
+
+    // Redirect commands
+    position := Pos('<|REDIRECT|>', Buffer);
+    if position > 0 then
+    begin
+      BufferTemp := Buffer;
+      Delete(BufferTemp, 1, position + 11);
+
+      if (Pos('<|FOLDERLIST|>', BufferTemp) > 0) then
+      begin
+        while (AThread_Main.Connected) do
+        begin
+
+          Sleep(ProcessingSlack); // Avoids using 100% CPU
+
+          if (Pos('<|ENDFOLDERLIST|>', BufferTemp) > 0) then
+            break;
+
+          BufferTemp := BufferTemp + AThread_Main.ReceiveText;
+
+        end;
+      end;
+
+      if (Pos('<|FILESLIST|>', BufferTemp) > 0) then
+      begin
+
+        while (AThread_Main.Connected) do
+        begin
+
+          Sleep(ProcessingSlack); // Avoids using 100% CPU
+
+          if (Pos('<|ENDFILESLIST|>', BufferTemp) > 0) then
+            break;
+
+          BufferTemp := BufferTemp + AThread_Main.ReceiveText;
+
+        end;
+      end;
 
       if (AThread_Main_Target <> nil) and (AThread_Main_Target.Connected) then
-        while AThread_Main_Target.SendText('<|DISCONNECTED|>') < 0 do
+        while AThread_Main_Target.SendText(BufferTemp) < 0 do
           Sleep(ProcessingSlack);
 
     end;
+
   end;
 
   if (AThread_Main_Target <> nil) and (AThread_Main_Target.Connected) then
+  begin
     while AThread_Main_Target.SendText('<|DISCONNECTED|>') < 0 do
       Sleep(ProcessingSlack);
+  end;
 
   Synchronize(
     procedure
     begin
-      L.Delete;
-
+      L2 := FindListItemID(L.SubItems[3]);
       if L2 <> nil then
         L2.SubItems[3] := '';
+
+      L.Delete;
     end);
 
 end;
@@ -703,37 +680,25 @@ begin
   L                     := FindListItemID(MyID);
   L.SubItems.Objects[1] := TObject(Self);
 
-  try
-    while true do
+  while true do
+  begin
+
+    Sleep(ProcessingSlack);
+
+    if (AThread_Desktop = nil) or not (AThread_Desktop.Connected) then
+      break;
+
+    if AThread_Desktop.ReceiveLength < 1 then
+      Continue;
+
+    Buffer := AThread_Desktop.ReceiveText;
+
+    if (AThread_Desktop_Target <> nil) and (AThread_Desktop_Target.Connected) then
     begin
-
-      Sleep(ProcessingSlack);
-
-      if not AThread_Desktop.Connected then
-        break;
-
-      if AThread_Desktop.ReceiveLength < 1 then
-        Continue;
-
-      Buffer := AThread_Desktop.ReceiveText;
-
-      if (AThread_Desktop_Target <> nil) and (AThread_Desktop_Target.Connected) then
-        while AThread_Desktop_Target.SendText(Buffer) < 0 do
-          Sleep(ProcessingSlack);
-
+      while AThread_Desktop_Target.SendText(Buffer) < 0 do
+        Sleep(ProcessingSlack);
     end;
 
-  except
-    on E: Exception do
-    begin
-
-      Synchronize(
-        procedure
-        begin
-          RegisterErrorLog('Desktop Thread Connection', E.ClassName, E.Message);
-        end);
-
-    end;
   end;
 
 end;
@@ -749,37 +714,23 @@ begin
   L                     := FindListItemID(MyID);
   L.SubItems.Objects[2] := TObject(Self);
 
-  try
-    while true do
+  while true do
+  begin
+
+    Sleep(ProcessingSlack);
+
+    if (AThread_Keyboard = nil) or not (AThread_Keyboard.Connected) then
+      break;
+
+    if AThread_Keyboard.ReceiveLength < 1 then
+      Continue;
+
+    Buffer := AThread_Keyboard.ReceiveText;
+
+    if (AThread_Keyboard_Target <> nil) and (AThread_Keyboard_Target.Connected) then
     begin
-
-      Sleep(ProcessingSlack);
-
-      if not AThread_Keyboard.Connected then
-        break;
-
-      if AThread_Keyboard.ReceiveLength < 1 then
-        Continue;
-
-      Buffer := AThread_Keyboard.ReceiveText;
-
-      if (AThread_Keyboard_Target <> nil) and (AThread_Keyboard_Target.Connected) then
-        while AThread_Keyboard_Target.SendText(Buffer) < 0 do
-          Sleep(ProcessingSlack);
-
-    end;
-
-  except
-
-    on E: Exception do
-    begin
-
-      Synchronize(
-        procedure
-        begin
-          RegisterErrorLog('Keyboard Thread Connection', E.ClassName, E.Message);
-        end);
-
+      while AThread_Keyboard_Target.SendText(Buffer) < 0 do
+        Sleep(ProcessingSlack);
     end;
 
   end;
@@ -797,37 +748,24 @@ begin
   L                     := FindListItemID(MyID);
   L.SubItems.Objects[3] := TObject(Self);
 
-  try
-    while true do
-    begin
 
-      Sleep(ProcessingSlack);
+  while true do
+  begin
 
-      if not AThread_Files.Connected then
-        break;
+    Sleep(ProcessingSlack);
 
-      if AThread_Files.ReceiveLength < 1 then
-        Continue;
+    if (AThread_Files = nil) or not (AThread_Files.Connected) then
+      break;
 
-      Buffer := AThread_Files.ReceiveText;
+    if AThread_Files.ReceiveLength < 1 then
+      Continue;
 
-      if (AThread_Files_Target <> nil) and (AThread_Files_Target.Connected) then
-        while AThread_Files_Target.SendText(Buffer) < 0 do
-          Sleep(ProcessingSlack);
+    Buffer := AThread_Files.ReceiveText;
 
-    end;
+    if (AThread_Files_Target <> nil) and (AThread_Files_Target.Connected) then
+      while AThread_Files_Target.SendText(Buffer) < 0 do
+        Sleep(ProcessingSlack);
 
-  except
-    on E: Exception do
-    begin
-
-      Synchronize(
-        procedure
-        begin
-          RegisterErrorLog('Files Thread Connection', E.ClassName, E.Message);
-        end);
-
-    end;
   end;
 
 end;
@@ -837,30 +775,25 @@ var
   i         : Integer;
   Connection: TThreadConnection_Main;
 begin
-  i := 0;
-
-  while i < Connections_ListView.Items.Count do
-  begin
-    try
+  try
+    for i := 0 to Connections_ListView.Items.Count - 1 do
+    begin
+      if Connections_ListView.Items.Item[i].SubItems.Objects[0] = nil then
+        Continue;
 
       Connection := TThreadConnection_Main(Connections_ListView.Items.Item[i].SubItems.Objects[0]);
+      if (Connection.AThread_Main = nil) or not(Connection.AThread_Main.Connected) then
+        Continue;
 
-      // Request Ping
-      if Connection.AThread_Main.Connected then
-      begin
-        Connection.AThread_Main.SendText('<|PING|>');
-        Connection.StartPing := GetTickCount;
+      Connection.AThread_Main.SendText('<|PING|>');
+      Connection.StartPing := GetTickCount;
 
-        if Connections_ListView.Items.Item[i].SubItems[4] <> 'Calculating...' then
-          Connection.AThread_Main.SendText('<|SETPING|>' + IntToStr(Connection.EndPing) + '<|END|>');
-      end;
-
-      Inc(i);
-    except
-      On E: Exception do
-        RegisterErrorLog('Ping Timer', E.ClassName, E.Message);
-
+      if Connections_ListView.Items.Item[i].SubItems[4] <> 'Calculating...' then
+        Connection.AThread_Main.SendText('<|SETPING|>' + IntToStr(Connection.EndPing) + '<|END|>');
     end;
+  except
+    On E: Exception do
+      RegisterErrorLog('Ping Timer', E.ClassName, E.Message);
   end;
 end;
 
